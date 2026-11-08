@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:," />
+<title>实时翻译</title>
+<style>
+  :root{
+    --bg:#f4f3ef;
+    --surface:#ffffff;
+    --surface-2:#eceae3;
+    --ink:#1a1d1a;
+    --muted:#6b726b;
+    --line:#e2dfd6;
+    --accent:#0f766e;
+    --accent-ink:#ffffff;
+    --accent-soft:#e6f2f0;
+    --warn:#b45309;
+    --error:#b91c1c;
+    --radius:16px;
+    --shadow:0 1px 2px rgba(20,25,20,.06),0 8px 28px rgba(20,25,20,.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#111311;
+      --surface:#1b1e1b;
+      --surface-2:#242824;
+      --ink:#eceee9;
+      --muted:#9aa39a;
+      --line:#2e332e;
+      --accent:#2dd4bf;
+      --accent-ink:#0b1513;
+      --accent-soft:#17302c;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.25);
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family: -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    line-height:1.55;
+  }
+  .wrap{max-width:980px;margin:0 auto;padding:18px 16px 40px}
+  /* status strip */
+  .statusbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;font-size:13px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:999px;background:var(--accent);flex:none}
+  .dot.busy{background:var(--warn)}
+  .dot.err{background:var(--error)}
+  .statusbar .spacer{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12.5px;color:var(--ink)}
+  .pill button{border:0;background:none;color:var(--accent);font:inherit;font-weight:600;cursor:pointer;padding:0}
+  /* language bar */
+  .langbar{display:flex;align-items:stretch;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:8px;box-shadow:var(--shadow)}
+  .langbar select{
+    flex:1;min-width:0;appearance:none;-webkit-appearance:none;
+    border:1px solid transparent;background:var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b726b' stroke-width='2.4'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
+    border-radius:10px;padding:11px 34px 11px 14px;font-size:15px;font-weight:600;color:var(--ink);cursor:pointer;
+  }
+  .langbar select:focus{outline:2px solid var(--accent);outline-offset:1px}
+  .swap{
+    flex:none;width:44px;border:1px solid var(--line);background:var(--surface);border-radius:10px;
+    display:grid;place-items:center;cursor:pointer;color:var(--accent);
+  }
+  .swap:hover{background:var(--accent-soft)}
+  .swap:active{transform:scale(.96)}
+  .swap svg{width:20px;height:20px}
+  /* quick chips */
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin:12px 2px 0}
+  .chips span{font-size:12.5px;color:var(--muted);align-self:center;margin-right:2px}
+  .chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  /* panels */
+  .panels{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+  .panel.out{background:var(--accent-soft);border-color:transparent}
+  @media (prefers-color-scheme: dark){ .panel.out{border-color:var(--line)} }
+  .panel-head{display:flex;align-items:center;gap:6px;padding:10px 12px 0}
+  .panel-head .lbl{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+  .panel-head .spacer{flex:1}
+  .iconbtn{width:34px;height:34px;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;flex:none}
+  .iconbtn:hover{background:var(--surface-2);color:var(--ink)}
+  .iconbtn.on{color:var(--accent);background:var(--surface);border-color:var(--accent)}
+  .iconbtn.rec{color:#fff;background:var(--error)}
+  .iconbtn svg{width:18px;height:18px}
+  .iconbtn:disabled{opacity:.35;cursor:default}
+  textarea,.outtext{
+    width:100%;border:0;background:transparent;color:var(--ink);resize:none;
+    font:inherit;font-size:17px;line-height:1.65;padding:10px 16px 6px;min-height:150px;
+  }
+  textarea:focus{outline:none}
+  textarea::placeholder,.outtext .ph{color:var(--muted)}
+  .outtext{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+  .panel-foot{display:flex;align-items:center;gap:8px;padding:8px 12px 12px;font-size:12.5px;color:var(--muted)}
+  .panel-foot .spacer{flex:1}
+  .textbtn{border:0;background:none;font:inherit;font-size:13px;color:var(--accent);font-weight:600;cursor:pointer;padding:4px 6px;border-radius:6px}
+  .textbtn:hover{background:var(--surface-2)}
+  .textbtn:disabled{color:var(--muted);cursor:default;background:none}
+  .listening{display:none;align-items:center;gap:7px;color:var(--error);font-weight:600;font-size:13px}
+  .listening.show{display:inline-flex}
+  .pulse{width:8px;height:8px;border-radius:999px;background:var(--error);animation:pl 1s infinite}
+  @keyframes pl{0%,100%{opacity:1}50%{opacity:.25}}
+  @media (prefers-reduced-motion: reduce){ .pulse{animation:none} }
+  /* toast */
+  .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,16px);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:13.5px;opacity:0;pointer-events:none;transition:.22s;z-index:50;max-width:88vw;text-align:center}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  /* history */
+  .history{margin-top:26px}
+  .history h2{font-size:15px;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  .history h2 .spacer{flex:1}
+  .history .empty{color:var(--muted);font-size:13.5px;padding:10px 2px}
+  .hitem{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:8px;cursor:pointer}
+  .hitem:hover{border-color:var(--accent)}
+  .hitem .meta{font-size:11.5px;color:var(--muted);margin-bottom:4px}
+  .hitem .src{font-size:14.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hitem .dst{font-size:14.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+  .tips{margin-top:22px;font-size:12.5px;color:var(--muted);line-height:1.7}
+  .tips b{color:var(--ink)}
+  /* simultaneous interpretation */
+  .sim{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+  .sim-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .sim-head h2{font-size:17px;margin:0}
+  .sim-head .spacer{flex:1}
+  .sim-status{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--muted)}
+  .sim-status .sdot{width:9px;height:9px;border-radius:999px;background:var(--muted);flex:none}
+  .sim-status.listening{color:var(--accent)}
+  .sim-status.listening .sdot{background:var(--accent);animation:pl 1.2s infinite}
+  .sim-status.working{color:var(--warn)}
+  .sim-status.working .sdot{background:var(--warn)}
+  .sim-status.speaking{color:var(--accent)}
+  .sim-status.speaking .sdot{background:var(--accent)}
+  .sim-status.err{color:var(--error)}
+  .sim-status.err .sdot{background:var(--error)}
+  .sim-desc{font-size:13.5px;color:var(--muted);margin:8px 0 0}
+  .sim-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
+  .sim-btn{border:0;border-radius:12px;padding:13px 28px;font-size:16px;font-weight:700;cursor:pointer;background:var(--accent);color:var(--accent-ink)}
+  .sim-btn.stop{background:var(--error);color:#fff}
+  .sim-btn:disabled{opacity:.4;cursor:default}
+  .sim-meta{font-size:12.5px;color:var(--muted)}
+  .sim-unsupported{display:none;margin-top:12px;background:var(--surface-2);border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:14px;font-weight:600;line-height:1.6}
+  .sim-feed{margin-top:14px;max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:16px;padding:6px 2px}
+  .sim-item .s-src{font-size:16px;color:var(--muted);line-height:1.55}
+  .sim-item .s-dst{font-size:22px;font-weight:600;line-height:1.45;margin-top:2px}
+  .sim-empty{color:var(--muted);font-size:14px}
+  .sim-live{font-size:15px;color:var(--muted);min-height:22px;margin-top:4px}
+  @media (max-width:680px){
+    .panels{grid-template-columns:1fr}
+    textarea,.outtext{min-height:120px;font-size:16px}
+    .wrap{padding:12px 12px 32px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="statusbar">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">输入文字即可实时翻译</span>
+    <span class="spacer"></span>
+    <span class="pill" id="enginePill">引擎自动切换 · MyMemory / 微软 / 谷歌</span>
+  </div>
+
+  <div class="langbar">
+    <select id="srcLang" aria-label="源语言"></select>
+    <button class="swap" id="swapBtn" title="交换语言" aria-label="交换语言">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>
+    </button>
+    <select id="dstLang" aria-label="目标语言"></select>
+  </div>
+
+  <div class="chips" id="phraseChips">
+    <span>试一句：</span>
+  </div>
+
+  <div class="panels">
+    <!-- input -->
+    <section class="panel" aria-label="原文">
+      <div class="panel-head">
+        <span class="lbl" id="srcLbl">原文</span>
+        <span class="spacer"></span>
+        <span class="listening" id="listening"><span class="pulse"></span>正在聆听…</span>
+        <button class="iconbtn" id="micBtn" title="语音输入" aria-label="语音输入">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+        </button>
+        <button class="iconbtn" id="speakSrcBtn" title="朗读原文" aria-label="朗读原文">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        </button>
+      </div>
+      <textarea id="input" placeholder="输入或粘贴要翻译的文字，也可以点麦克风说话…" maxlength="5000"></textarea>
+      <div class="panel-foot">
+        <span id="charCount">0 / 5000</span>
+        <span class="spacer"></span>
+        <button class="textbtn" id="pasteBtn">粘贴</button>
+        <button class="textbtn" id="clearBtn">清空</button>
+      </div>
+    </section>
+
+    <!-- output -->
+    <section class="panel out" aria-label="译文">
+      <div class="panel-head">
+        <span class="lbl" id="dstLbl">译文</span>
+        <span class="spacer"></span>
+        <button class="iconbtn" id="speakDstBtn" title="朗读译文" aria-label="朗读译文">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        </button>
+        <button class="iconbtn" id="copyBtn" title="复制译文" aria-label="复制译文">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+        <button class="iconbtn" id="useAsInputBtn" title="把译文放到左边继续翻译" aria-label="把译文放到左边继续翻译">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+        </button>
+      </div>
+      <div class="outtext" id="output"><span class="ph">译文会实时显示在这里</span></div>
+      <div class="panel-foot">
+        <span id="outInfo"></span>
+        <span class="spacer"></span>
+        <button class="textbtn" id="retryBtn" style="display:none">重试</button>
+        <button class="textbtn" id="copyBothBtn">复制双语对照</button>
+      </div>
+    </section>
+  </div>
+
+  <section class="sim" aria-label="同传模式">
+    <div class="sim-head">
+      <h2>同传模式</h2>
+      <span class="spacer"></span>
+      <span class="sim-status" id="simStatus"><span class="sdot"></span>未开启</span>
+    </div>
+    <p class="sim-desc">开启后对着麦克风连续说话，每识别完一句就自动翻译并朗读译文，适合听讲座、看外语视频时边听边看。语言方向就是上方选好的源语言 → 目标语言。</p>
+    <div class="sim-controls">
+      <button class="sim-btn" id="simToggle">开始同传</button>
+      <span class="sim-meta" id="simRecogLang"></span>
+      <span class="spacer" style="flex:1"></span>
+      <button class="textbtn" id="clearSimBtn" style="display:none">清空同传记录</button>
+    </div>
+    <div class="sim-unsupported" id="simUnsupported">当前浏览器不支持语音识别 — 同传模式用不了。请用手机 Chrome 打开本页再开启同传（打字翻译不受影响）。</div>
+    <div class="sim-feed" id="simFeed"><div class="sim-empty">同传记录会逐句出现在这里，停止后仍保留。</div></div>
+    <div class="sim-live" id="simLive"></div>
+  </section>
+
+  <section class="history">
+    <h2>翻译记录 <span class="spacer"></span>
+      <button class="textbtn" id="clearHistoryBtn" style="display:none">清空记录</button>
+    </h2>
+    <div id="historyList"><div class="empty">还没有记录 — 翻译过的内容会出现在这里，点任意一条可以重新载入。</div></div>
+  </section>
+
+  <p class="tips">
+    <b>怎么用：</b>在左边输入，右边实时出译文，不用点按钮。点麦克风可以直接说话输入；点喇叭朗读原文或译文。长文会自动分段翻译。翻译记录只保留在本次打开期间，关掉页面即清除。<br>
+    <b>同传模式：</b>点下方「开始同传」后连续说话即可，译文逐句出现并自动朗读。语音识别（含麦克风和同传）依赖浏览器支持，建议用手机 Chrome 打开本页使用；在不支持语音识别的浏览器里，打字翻译不受影响。
+  </p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  var LANGS = [
+    {code:"auto",   name:"自动检测"},
+    {code:"zh-CN",  name:"中文（简体）"},
+    {code:"zh-TW",  name:"中文（繁体）"},
+    {code:"en",     name:"英语 English"},
+    {code:"ja",     name:"日语 日本語"},
+    {code:"ko",     name:"韩语 한국어"},
+    {code:"fr",     name:"法语 Français"},
+    {code:"de",     name:"德语 Deutsch"},
+    {code:"es",     name:"西班牙语 Español"},
+    {code:"ru",     name:"俄语 Русский"},
+    {code:"pt",     name:"葡萄牙语 Português"},
+    {code:"it",     name:"意大利语 Italiano"},
+    {code:"th",     name:"泰语 ไทย"},
+    {code:"vi",     name:"越南语 Tiếng Việt"},
+    {code:"ar",     name:"阿拉伯语 العربية"},
+    {code:"hi",     name:"印地语 हिन्दी"},
+    {code:"id",     name:"印尼语 Bahasa Indonesia"},
+    {code:"nl",     name:"荷兰语 Nederlands"}
+  ];
+  var PHRASES = [
+    "你好，最近怎么样？",
+    "请问最近的地铁站怎么走？",
+    "这个多少钱？可以便宜一点吗？",
+    "我想预订一张明天上午的机票。",
+    "谢谢你的帮助，下次见！"
+  ];
+  function langName(code){
+    for (var i=0;i<LANGS.length;i++) if (LANGS[i].code===code) return LANGS[i].name;
+    return code;
+  }
+  // speech recognition / synthesis locale map (mostly same code)
+  function speechLocale(code){
+    var m = {"zh-CN":"zh-CN","zh-TW":"zh-TW","en":"en-US","ja":"ja-JP","ko":"ko-KR","fr":"fr-FR","de":"de-DE","es":"es-ES","ru":"ru-RU","pt":"pt-PT","it":"it-IT","th":"th-TH","vi":"vi-VN","ar":"ar-SA","hi":"hi-IN","id":"id-ID","nl":"nl-NL"};
+    return m[code] || "zh-CN";
+  }
+  function detectLang(text){
+    var t = text.slice(0,400);
+    if (/[\u3040-\u30ff]/.test(t)) return "ja";
+    if (/[\uac00-\ud7a3]/.test(t)) return "ko";
+    if (/[\u4e00-\u9fff]/.test(t)) return "zh-CN";
+    if (/[\u0400-\u04ff]/.test(t)) return "ru";
+    if (/[\u0600-\u06ff]/.test(t)) return "ar";
+    if (/[\u0e00-\u0e7f]/.test(t)) return "th";
+    if (/[\u0900-\u097f]/.test(t)) return "hi";
+    if (/[àâäéèêëîïôöùûüç]/i.test(t)) return "fr";
+    if (/[äöüß]/i.test(t)) return "de";
+    if (/[ñ¡¿]/i.test(t)) return "es";
+    return "en";
+  }
+
+  var $ = function(id){ return document.getElementById(id); };
+  var srcSel=$("srcLang"), dstSel=$("dstLang"), input=$("input"), output=$("output"),
+      statusDot=$("statusDot"), statusText=$("statusText"), charCount=$("charCount"),
+      outInfo=$("outInfo"), retryBtn=$("retryBtn"), toastEl=$("toast");
+
+  LANGS.forEach(function(l){
+    var o1=document.createElement("option"); o1.value=l.code; o1.textContent=l.name; srcSel.appendChild(o1);
+    if (l.code!=="auto"){ var o2=document.createElement("option"); o2.value=l.code; o2.textContent=l.name; dstSel.appendChild(o2); }
+  });
+  srcSel.value="auto"; dstSel.value="en";
+
+  var chips=$("phraseChips");
+  PHRASES.forEach(function(p){
+    var b=document.createElement("button"); b.className="chip"; b.textContent=p;
+    b.addEventListener("click",function(){ input.value=p; onInput(); input.focus(); });
+    chips.appendChild(b);
+  });
+
+  var toastTimer=null;
+  function toast(msg){
+    toastEl.textContent=msg; toastEl.classList.add("show");
+    clearTimeout(toastTimer); toastTimer=setTimeout(function(){ toastEl.classList.remove("show"); },2200);
+  }
+  function setStatus(mode, text){
+    statusDot.className="dot"+(mode==="busy"?" busy":mode==="err"?" err":"");
+    statusText.textContent=text;
+  }
+
+  /* ---------- translation engines: Microsoft → Google → MyMemory, auto failover ---------- */
+  var reqSeq=0, debounceTimer=null, lastResult="", lastSrcText="", detectedCode="en";
+
+  function chunkText(text, max){
+    if (text.length<=max) return [text];
+    var chunks=[], rest=text;
+    while (rest.length>max){
+      var slice=rest.slice(0,max);
+      var cut=Math.max(slice.lastIndexOf("。"),slice.lastIndexOf("."),slice.lastIndexOf("！"),slice.lastIndexOf("!"),slice.lastIndexOf("？"),slice.lastIndexOf("?"),slice.lastIndexOf("\n"),slice.lastIndexOf("；"),slice.lastIndexOf(";"),slice.lastIndexOf("，"),slice.lastIndexOf(","));
+      if (cut<max*0.4) cut=max;
+      else cut=cut+1;
+      chunks.push(rest.slice(0,cut)); rest=rest.slice(cut);
+    }
+    if (rest) chunks.push(rest);
+    return chunks;
+  }
+  function timedFetch(url, opts, ms){
+    var ctrl=("AbortController" in window)?new AbortController():null;
+    var t=setTimeout(function(){ if(ctrl) ctrl.abort(); }, ms||12000);
+    var o=opts||{}; if (ctrl) o.signal=ctrl.signal;
+    return fetch(url,o).finally(function(){ clearTimeout(t); });
+  }
+  /* Microsoft Translator (Edge free endpoint) */
+  var msToken=null, msTokenAt=0;
+  function msCode(c){ return c==="zh-CN"?"zh-Hans":c==="zh-TW"?"zh-Hant":c; }
+  function msTokenGet(){
+    if (msToken && Date.now()-msTokenAt<8*60*1000) return Promise.resolve(msToken);
+    return timedFetch("https://edge.microsoft.com/translate/auth",{},8000).then(function(r){
+      if (!r.ok) throw new Error("ms auth "+r.status);
+      return r.text();
+    }).then(function(t){
+      if (!t || t.length<20) throw new Error("ms token empty");
+      msToken=t; msTokenAt=Date.now(); return t;
+    });
+  }
+  function translateMS(text, from, to){
+    return msTokenGet().then(function(tok){
+      var chunks=chunkText(text,900);
+      var body=chunks.map(function(c){ return {Text:c}; });
+      return timedFetch("https://api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0&from="+encodeURIComponent(msCode(from))+"&to="+encodeURIComponent(msCode(to)),{
+        method:"POST",
+        headers:{"Authorization":"Bearer "+tok,"Content-Type":"application/json"},
+        body:JSON.stringify(body)
+      }).then(function(r){
+        if (!r.ok){ msToken=null; throw new Error("ms "+r.status); }
+        return r.json();
+      }).then(function(j){
+        if (!j || !j.length) throw new Error("ms empty");
+        return j.map(function(it){
+          if (!it.translations || !it.translations.length) throw new Error("ms empty");
+          return it.translations[0].text;
+        }).join("");
+      });
+    });
+  }
+  /* Google Translate (gtx free endpoint) */
+  function translateGoogle(text, from, to){
+    var chunks=chunkText(text,900);
+    var jobs=chunks.map(function(c){
+      var url="https://translate.googleapis.com/translate_a/single?client=gtx&sl="+encodeURIComponent(from)+"&tl="+encodeURIComponent(to)+"&dt=t&q="+encodeURIComponent(c);
+      return timedFetch(url,{},10000).then(function(r){
+        if (!r.ok) throw new Error("gg "+r.status);
+        return r.json();
+      }).then(function(j){
+        if (!j || !j[0]) throw new Error("gg empty");
+        return j[0].map(function(seg){ return seg[0]||""; }).join("");
+      });
+    });
+    return Promise.all(jobs).then(function(p){ return p.join(""); });
+  }
+  /* MyMemory (free, anonymous quota) */
+  function translateMyMemory(text, from, to){
+    var chunks=chunkText(text,450);
+    var jobs=chunks.map(function(c){
+      var url="https://api.mymemory.translated.net/get?q="+encodeURIComponent(c)+"&langpair="+encodeURIComponent(from+"|"+to);
+      return timedFetch(url,{},10000).then(function(r){
+        if (!r.ok) throw new Error("mm "+r.status);
+        return r.json();
+      }).then(function(j){
+        var t=j && j.responseData && j.responseData.translatedText;
+        if (typeof t!=="string" || !t) throw new Error("mm empty");
+        if (/QUERY LENGTH LIMIT|INVALID|NO QUERY SPECIFIED|MYMEMORY WARNING/i.test(t)) throw new Error("mm quota");
+        return t;
+      });
+    });
+    return Promise.all(jobs).then(function(p){ return p.join(""); });
+  }
+  var ENGINES=[
+    {name:"MyMemory", fn:translateMyMemory},
+    {name:"微软翻译", fn:translateMS},
+    {name:"谷歌翻译", fn:translateGoogle}
+  ];
+  function translateWithFailover(text, from, to){
+    var chain=Promise.reject(new Error("start"));
+    var usedName="";
+    ENGINES.forEach(function(e){
+      chain=chain.catch(function(){
+        return e.fn(text,from,to).then(function(res){ usedName=e.name; return res; });
+      });
+    });
+    return chain.then(function(res){ return {text:res, engine:usedName}; });
+  }
+  function translateNow(){
+    var text=input.value;
+    var mySeq=++reqSeq;
+    if (!text.trim()){
+      lastResult=""; lastSrcText="";
+      output.innerHTML='<span class="ph">译文会实时显示在这里</span>';
+      outInfo.textContent=""; retryBtn.style.display="none";
+      setStatus("ok","输入文字即可实时翻译");
+      return;
+    }
+    var from = srcSel.value==="auto" ? detectLang(text) : srcSel.value;
+    detectedCode=from;
+    var to = dstSel.value;
+    if (srcSel.value==="auto") $("srcLbl").textContent="原文 · 检测为"+langName(from).split(" ")[0];
+    else $("srcLbl").textContent="原文";
+    $("dstLbl").textContent="译文 · "+langName(to).split(" ")[0];
+
+    if (from===to){
+      lastResult=text; lastSrcText=text;
+      output.textContent=text;
+      outInfo.textContent="源语言与目标语言相同";
+      retryBtn.style.display="none";
+      setStatus("ok","已是目标语言，无需翻译");
+      return;
+    }
+    setStatus("busy","正在翻译…");
+    retryBtn.style.display="none";
+    translateWithFailover(text,from,to).then(function(res){
+      if (mySeq!==reqSeq) return; // a newer request superseded this one
+      lastResult=res.text;
+      lastSrcText=text;
+      output.textContent=lastResult;
+      outInfo.textContent=langName(from).split(" ")[0]+" → "+langName(to).split(" ")[0]+" · "+res.engine+" · "+lastResult.length+" 字";
+      setStatus("ok","翻译完成");
+      addHistory(text,lastResult,from,to);
+    }).catch(function(){
+      if (mySeq!==reqSeq) return;
+      setStatus("err","翻译失败 — 三个引擎都连不上，请检查网络后重试");
+      outInfo.textContent="所有翻译引擎暂时不可用";
+      retryBtn.style.display="";
+      if (!lastResult) output.innerHTML='<span class="ph">翻译失败，点「重试」再试一次</span>';
+    });
+  }
+  function onInput(){
+    charCount.textContent=input.value.length+" / 5000";
+    autoGrow();
+    clearTimeout(debounceTimer);
+    if (!input.value.trim()){ translateNow(); return; }
+    setStatus("busy","正在输入…");
+    debounceTimer=setTimeout(translateNow,550);
+  }
+  function autoGrow(){
+    input.style.height="auto";
+    input.style.height=Math.max(150,Math.min(420,input.scrollHeight))+"px";
+  }
+  input.addEventListener("input",onInput);
+  srcSel.addEventListener("change",translateNow);
+  dstSel.addEventListener("change",translateNow);
+  retryBtn.addEventListener("click",translateNow);
+
+  $("swapBtn").addEventListener("click",function(){
+    var curSrc = srcSel.value==="auto" ? detectedCode : srcSel.value;
+    var curDst = dstSel.value;
+    if (curSrc===curDst){ toast("源语言和目标语言相同，不用交换"); return; }
+    srcSel.value=curDst; dstSel.value=curSrc;
+    if (lastResult){ input.value=lastResult; charCount.textContent=input.value.length+" / 5000"; autoGrow(); }
+    translateNow();
+  });
+  $("clearBtn").addEventListener("click",function(){ input.value=""; onInput(); input.focus(); });
+  $("pasteBtn").addEventListener("click",function(){
+    if (navigator.clipboard && navigator.clipboard.readText){
+      navigator.clipboard.readText().then(function(t){
+        if (t){ input.value=(input.value?input.value+" ":"")+t; onInput(); }
+        else toast("剪贴板是空的");
+      }).catch(function(){ toast("浏览器不允许读取剪贴板，请长按粘贴"); });
+    } else toast("当前浏览器不支持读取剪贴板，请长按粘贴");
+  });
+  $("useAsInputBtn").addEventListener("click",function(){
+    if (!lastResult){ toast("还没有译文"); return; }
+    var oldDst=dstSel.value;
+    var curSrc = srcSel.value==="auto" ? detectedCode : srcSel.value;
+    input.value=lastResult; srcSel.value=oldDst; dstSel.value=curSrc;
+    charCount.textContent=input.value.length+" / 5000"; autoGrow(); translateNow();
+  });
+
+  function copyText(t,msg){
+    if (!t){ toast("没有可复制的内容"); return; }
+    function done(){ toast(msg||"已复制"); }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(done).catch(function(){ fallback(); });
+    } else fallback();
+    function fallback(){
+      var ta=document.createElement("textarea"); ta.value=t; ta.style.position="fixed"; ta.style.opacity="0";
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand("copy"); done(); }catch(e){ toast("复制失败，请长按选择文本"); }
+      document.body.removeChild(ta);
+    }
+  }
+  $("copyBtn").addEventListener("click",function(){ copyText(lastResult,"译文已复制"); });
+  $("copyBothBtn").addEventListener("click",function(){
+    if (!lastResult){ toast("还没有译文"); return; }
+    copyText(input.value+"\n———\n"+lastResult,"双语对照已复制");
+  });
+
+  /* ---------- speech ---------- */
+  function speak(text, code, btn){
+    if (!text){ toast("没有可朗读的内容"); return; }
+    if (!("speechSynthesis" in window)){ toast("当前浏览器不支持朗读"); return; }
+    if (speechSynthesis.speaking){ speechSynthesis.cancel(); if(btn) btn.classList.remove("on"); return; }
+    var u=new SpeechSynthesisUtterance(text.slice(0,600));
+    u.lang=speechLocale(code); u.rate=0.95;
+    if (btn){ btn.classList.add("on"); u.onend=u.onerror=function(){ btn.classList.remove("on"); }; }
+    speechSynthesis.speak(u);
+  }
+  $("speakSrcBtn").addEventListener("click",function(){
+    var code = srcSel.value==="auto" ? detectedCode : srcSel.value;
+    speak(input.value.trim(), code, this);
+  });
+  $("speakDstBtn").addEventListener("click",function(){ speak(lastResult, dstSel.value, this); });
+
+  var recog=null, listening=false;
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var micBtn=$("micBtn");
+  micBtn.addEventListener("click",function(){
+    if (!SR){ toast("当前浏览器不支持语音识别 — 请用 Chrome 打开本页，或改用打字输入"); return; }
+    if (listening){ recog.stop(); return; }
+    recog=new SR();
+    recog.lang=speechLocale(srcSel.value==="auto" ? detectLang(input.value||"你好") : srcSel.value);
+    recog.interimResults=true; recog.continuous=false;
+    var base=input.value;
+    recog.onresult=function(e){
+      var finalT="", interim="";
+      for (var i=e.resultIndex;i<e.results.length;i++){
+        if (e.results[i].isFinal) finalT+=e.results[i][0].transcript;
+        else interim+=e.results[i][0].transcript;
+      }
+      input.value=base+(base&&finalT+interim?"":"")+(finalT+interim);
+      charCount.textContent=input.value.length+" / 5000"; autoGrow();
+      if (finalT){ base=input.value; clearTimeout(debounceTimer); debounceTimer=setTimeout(translateNow,400); }
+    };
+    recog.onend=function(){
+      listening=false; micBtn.classList.remove("rec"); $("listening").classList.remove("show");
+      if (input.value.trim()) translateNow();
+    };
+    recog.onerror=function(e){
+      listening=false; micBtn.classList.remove("rec"); $("listening").classList.remove("show");
+      if (e.error==="not-allowed") toast("麦克风被拒绝 — 请在浏览器设置里允许麦克风");
+      else if (e.error==="no-speech") toast("没听清，请再说一次");
+      else if (e.error!=="aborted") toast("语音输入出错："+e.error);
+    };
+    try{ recog.start(); listening=true; micBtn.classList.add("rec"); $("listening").classList.add("show"); }
+    catch(err){ toast("语音输入启动失败"); }
+  });
+
+  /* ---------- simultaneous interpretation mode ---------- */
+  var simOn=false, simRecog=null, simRecogActive=false, simSpeaking=false,
+      simQueue=[], simBusy=false, simRestartT=null, simFastEnds=0,
+      simLastSent="", simLastAt=0, simLangUsed=null;
+  var simToggle=$("simToggle"), simStatusEl=$("simStatus"), simFeed=$("simFeed"),
+      simLive=$("simLive"), simLangEl=$("simRecogLang"), simUnsup=$("simUnsupported"),
+      clearSimBtn=$("clearSimBtn");
+  var simSupported=!!SR;
+  if (!simSupported){
+    simUnsup.style.display="block";
+    simToggle.disabled=true;
+  }
+  function simRecogCode(){
+    if (srcSel.value!=="auto") return srcSel.value;
+    return detectedCode || "zh-CN";
+  }
+  function simUpdateLangLabel(){
+    var c = simOn && simLangUsed ? simLangUsed : simRecogCode();
+    simLangEl.textContent="识别语言："+langName(c).split(" ")[0]+(srcSel.value==="auto"?"（源语言为自动检测）":"")+" · 译入："+langName(dstSel.value).split(" ")[0];
+  }
+  function setSimStatus(kind, text){
+    simStatusEl.className="sim-status"+(kind?" "+kind:"");
+    simStatusEl.innerHTML="";
+    var d=document.createElement("span"); d.className="sdot";
+    simStatusEl.appendChild(d);
+    simStatusEl.appendChild(document.createTextNode(text));
+  }
+  function simAppend(item, translated){
+    var empty=simFeed.querySelector(".sim-empty"); if (empty) empty.remove();
+    var d=document.createElement("div"); d.className="sim-item";
+    d.innerHTML='<div class="s-src"></div><div class="s-dst"></div>';
+    d.querySelector(".s-src").textContent=item.text;
+    d.querySelector(".s-dst").textContent=translated;
+    simFeed.appendChild(d);
+    clearSimBtn.style.display="";
+    simFeed.scrollTop=simFeed.scrollHeight;
+  }
+  function simSpeak(text, code, done){
+    if (!("speechSynthesis" in window)){ done(); return; }
+    var u=new SpeechSynthesisUtterance(text.slice(0,300));
+    u.lang=speechLocale(code); u.rate=1.0;
+    var finished=false;
+    function fin(){ if (finished) return; finished=true; done(); }
+    u.onstart=function(){
+      simSpeaking=true;
+      setSimStatus("speaking","朗读中…");
+      if (simRecog){ try{ simRecog.stop(); }catch(e){} } // don't let the mic hear the spoken translation
+    };
+    u.onend=fin; u.onerror=fin;
+    setTimeout(fin, 5000 + text.length*400); // stall guard only; onend normally fires first
+    try{ speechSynthesis.speak(u); }catch(e){ fin(); }
+  }
+  function simProcess(){
+    if (simBusy || !simQueue.length) return;
+    simBusy=true;
+    var item=simQueue.shift();
+    setSimStatus("working","翻译中…");
+    translateWithFailover(item.text, item.from, item.to).then(function(res){
+      simAppend(item, res.text);
+      simSpeak(res.text, item.to, function(){
+        simSpeaking=false; simBusy=false;
+        if (simOn) simStartRecog();
+        simProcess();
+        if (!simQueue.length && simOn) setSimStatus("listening","聆听中，请说话…");
+      });
+    }).catch(function(){
+      simAppend(item, "（这一句翻译失败，请检查网络）");
+      simBusy=false;
+      if (simOn) simStartRecog();
+      simProcess();
+    });
+  }
+  function simEnqueue(raw){
+    var text=(raw||"").trim();
+    if (!text) return;
+    simLive.textContent="";
+    simFastEnds=0;
+    var parts=text.match(/[^。！？.!?；;]+[。！？.!?；;]?/g)||[text];
+    parts.forEach(function(p){
+      p=p.trim(); if (!p) return;
+      var now=Date.now();
+      if (p===simLastSent && now-simLastAt<1500) return; // continuous mode can re-fire the same final
+      simLastSent=p; simLastAt=now;
+      var from = srcSel.value==="auto" ? detectLang(p) : srcSel.value;
+      if (srcSel.value==="auto"){ detectedCode=from; simUpdateLangLabel(); }
+      simQueue.push({text:p, from:from, to:dstSel.value});
+    });
+    simProcess();
+  }
+  function simStartRecog(){
+    if (!simOn || simSpeaking || simRecogActive || !simSupported) return;
+    var r;
+    try{ r=new SR(); }catch(e){ simFail("语音识别启动失败 — 当前浏览器可能不支持，请用 Chrome 打开本页"); return; }
+    simRecog=r;
+    simLangUsed=simRecogCode();
+    r.lang=speechLocale(simLangUsed);
+    r.continuous=true; r.interimResults=true;
+    var startedAt=0;
+    r.onstart=function(){
+      simRecogActive=true; startedAt=Date.now();
+      setSimStatus("listening","聆听中，请说话…");
+      simUpdateLangLabel();
+    };
+    r.onresult=function(e){
+      var interim="";
+      for (var i=e.resultIndex;i<e.results.length;i++){
+        if (e.results[i].isFinal) simEnqueue(e.results[i][0].transcript);
+        else interim+=e.results[i][0].transcript;
+      }
+      simLive.textContent=interim?("正在听："+interim):"";
+    };
+    r.onerror=function(e){
+      if (e.error==="not-allowed" || e.error==="service-not-allowed"){
+        simFail("语音识别被拒绝 — 请在 Chrome 里允许本页使用麦克风后重试");
+      } else if (e.error==="audio-capture"){
+        simFail("找不到麦克风 — 检查设备后重试");
+      } else if (e.error==="network"){
+        simFail("语音识别服务不可用（网络错误）— 请用 Chrome 打开本页，检查网络或 VPN 后重试");
+      }
+      /* no-speech / aborted: onend auto-restarts below */
+    };
+    r.onend=function(){
+      simRecogActive=false;
+      if (!simOn || simSpeaking) return;
+      var dur = startedAt ? Date.now()-startedAt : 0;
+      if (dur<1200) simFastEnds++; else simFastEnds=0;
+      if (simFastEnds>=5){
+        simFail("语音识别服务不可用 — 连续多次启动后立即结束，无法稳定连接，请用 Chrome 打开本页，检查网络或 VPN 后重试");
+        return;
+      }
+      var delay=Math.min(2500, 350*(simFastEnds+1));
+      clearTimeout(simRestartT);
+      simRestartT=setTimeout(simStartRecog, delay);
+    };
+    try{ r.start(); }
+    catch(e){
+      simRecogActive=false;
+      if (!simOn) return;
+      simFastEnds++;
+      if (simFastEnds>=5){
+        simFail("语音识别服务不可用 — 连续多次启动失败，请用 Chrome 打开本页，检查网络或 VPN 后重试");
+        return;
+      }
+      clearTimeout(simRestartT); simRestartT=setTimeout(simStartRecog, 600);
+    }
+  }
+  function simFail(msg){
+    simOn=false;
+    clearTimeout(simRestartT);
+    if (simRecog){ try{ simRecog.abort(); }catch(e){} }
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    simSpeaking=false; simRecogActive=false;
+    simToggle.textContent="开始同传"; simToggle.classList.remove("stop"); simToggle.disabled=false;
+    setSimStatus("err", msg);
+    simLive.textContent="";
+    toast(msg);
+  }
+  simToggle.addEventListener("click",function(){
+    if (!simSupported){ toast("当前浏览器不支持语音识别，请用 Chrome 打开本页"); return; }
+    if (simOn){
+      simOn=false;
+      clearTimeout(simRestartT);
+      if (simRecog){ try{ simRecog.abort(); }catch(e){} }
+      if ("speechSynthesis" in window) speechSynthesis.cancel();
+      simSpeaking=false; simRecogActive=false;
+      simToggle.textContent="开始同传"; simToggle.classList.remove("stop");
+      setSimStatus("","已停止 · 本次记录保留在下方");
+      simLive.textContent="";
+      return;
+    }
+    if (srcSel.value!=="auto" && srcSel.value===dstSel.value){
+      toast("源语言和目标语言相同，先改一下语言方向"); return;
+    }
+    simOn=true; simFastEnds=0;
+    simToggle.textContent="停止同传"; simToggle.classList.add("stop");
+    setSimStatus("listening","启动中…");
+    simLangUsed=null; simUpdateLangLabel();
+    simStartRecog();
+  });
+  clearSimBtn.addEventListener("click",function(){
+    simFeed.innerHTML='<div class="sim-empty">同传记录会逐句出现在这里，停止后仍保留。</div>';
+    clearSimBtn.style.display="none";
+  });
+  function simLangChanged(){
+    simUpdateLangLabel();
+    if (simOn && simRecogActive && simRecog){ try{ simRecog.stop(); }catch(e){} } // onend restarts with the new language
+  }
+  srcSel.addEventListener("change",simLangChanged);
+  dstSel.addEventListener("change",simLangChanged);
+  simUpdateLangLabel();
+
+  /* ---------- history (in-memory only) ---------- */
+  var history=[];
+  function addHistory(src,dst,from,to){
+    if (!src.trim()||!dst) return;
+    if (history.length && history[0].src===src && history[0].dst===dst) return;
+    history.unshift({src:src,dst:dst,from:from,to:to,at:new Date()});
+    if (history.length>20) history.length=20;
+    renderHistory();
+  }
+  function renderHistory(){
+    var list=$("historyList");
+    $("clearHistoryBtn").style.display=history.length?"":"none";
+    if (!history.length){
+      list.innerHTML='<div class="empty">还没有记录 — 翻译过的内容会出现在这里，点任意一条可以重新载入。</div>';
+      return;
+    }
+    list.innerHTML="";
+    history.forEach(function(h){
+      var d=document.createElement("div"); d.className="hitem";
+      var hh=String(h.at.getHours()).padStart(2,"0"), mm=String(h.at.getMinutes()).padStart(2,"0");
+      d.innerHTML='<div class="meta"></div><div class="src"></div><div class="dst"></div>';
+      d.querySelector(".meta").textContent=hh+":"+mm+" · "+langName(h.from).split(" ")[0]+" → "+langName(h.to).split(" ")[0];
+      d.querySelector(".src").textContent=h.src;
+      d.querySelector(".dst").textContent=h.dst;
+      d.addEventListener("click",function(){
+        srcSel.value=h.from; dstSel.value=h.to; input.value=h.src;
+        charCount.textContent=input.value.length+" / 5000"; autoGrow(); translateNow();
+        window.scrollTo({top:0,behavior:"smooth"});
+      });
+      list.appendChild(d);
+    });
+  }
+  $("clearHistoryBtn").addEventListener("click",function(){ history=[]; renderHistory(); toast("记录已清空"); });
+
+  document.addEventListener("keydown",function(e){
+    if ((e.ctrlKey||e.metaKey)&&e.key==="Enter"){ e.preventDefault(); translateNow(); }
+  });
+
+  onInput();
+  input.focus();
+})();
+</script>
+</body>
+</html>
